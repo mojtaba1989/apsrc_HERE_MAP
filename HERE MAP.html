@@ -1,0 +1,493 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <meta name="viewport" content="initial-scale=1.0, width=device-width" />
+    <script type="text/javascript" src="https://js.api.here.com/v3/3.1/mapsjs-core.js"></script>
+    <script type="text/javascript" src="https://js.api.here.com/v3/3.1/mapsjs-service.js"></script>
+    <script type="text/javascript" src="https://js.api.here.com/v3/3.1/mapsjs-mapevents.js"></script>
+    <script type="text/javascript" charset="utf-8" src="https://js.api.here.com/v3/3.1/mapsjs-ui.js" ></script>
+    <link rel="stylesheet" type="text/css" href="https://js.api.here.com/v3/3.1/mapsjs-ui.css" />
+    <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/eventemitter2@6.4.9/lib/eventemitter2.min.js"></script>
+    <script type="text/javascript" src="https://cdn.jsdelivr.net/npm/roslib@1/build/roslib.min.js"></script>
+    <title>APSRC HERE-ROS Bridge </title>
+    <style>
+        body {
+            width: 100%;
+            height: 100%;
+            position: absolute;
+            margin: 0px;
+            padding: 0px;
+            overflow: hidden;
+        }
+        #map {
+            position:absolute;
+            top:0;
+            bottom:0;
+            width:100%;
+            height: 100%;
+        }
+        #recenterButton {
+            position: absolute;
+            top: 10px;
+            left: 10px;
+            z-index: 1000;
+            background-color: yellow;
+            border: 1px solid #f8020200;
+            padding: 10px;
+            cursor: pointer;
+        }
+        #addDestinationButton {
+            position: absolute;
+            top: 50px;
+            left: 10px;
+            z-index: 1000;
+            background-color: yellowgreen;
+            border: 1px solid #f8020200;
+            padding: 10px;
+            cursor: pointer;
+        }
+        #addDestinationButton :disabled {
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        #modifyWaypointsButton {
+            position: absolute;
+            top: 90px;
+            left: 10px;
+            z-index: 1000;
+            background-color: green;
+            border: 1px solid #f8020200;
+            padding: 10px;
+            cursor: pointer;
+        }
+        #modifyWaypointsButton :disabled{
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        #CalcButton {
+            position: absolute;
+            top: 130px;
+            left: 10px;
+            z-index: 1000;
+            background-color: darkgreen;
+            border: 1px solid #f8020200;
+            padding: 10px;
+            cursor: pointer;
+        }
+        #CalcButton :disabled{
+            opacity: 0.5;
+            cursor: not-allowed;
+        }
+        
+    </style>
+  </head>
+  <body>
+    <div id="map"></div>
+    <button id="recenterButton">Recenter Map</button>
+    <button id="addDestinationButton">Add Destination</button>
+    <button id="modifyWaypointsButton" disabled>Modify Waypoints</button>
+    <button id="CalcButton" disabled>Send to MABx</button>
+    <script>
+
+        /***********
+         * FUNCTIONS
+        ***********/
+        function getMarkerIcon(id) {
+            const svgCircle = `<svg width="30" height="30" version="1.1" xmlns="http://www.w3.org/2000/svg">
+                                <g id="marker">
+                                <circle cx="15" cy="15" r="10" fill="#0099D8" stroke="#0099D8" stroke-width="4" />
+                                <text x="50%" y="50%" text-anchor="middle" fill="#FFFFFF" font-family="Arial, sans-serif" font-size="12px" dy=".3em">${id}</text>
+                                </g></svg>`;
+            return new H.map.Icon(svgCircle, {
+                anchor: {
+                    x: 10,
+                    y: 10
+                }
+            });
+        }
+
+        function addMarker(position, id, draggable) {
+            const marker = new H.map.Marker(position, {
+                data: {
+                    id
+                },
+                icon: getMarkerIcon(id),
+                volatility: true
+            });
+            if (draggable) {
+                marker.draggable = true;
+            }
+            map.addObject(marker);
+            return marker;
+        }
+
+        function addNote(id, note) {
+            var noteElement = document.createElement("div");
+            noteElement.textContent = note;
+            noteElement.id = id;
+            
+            noteElement.style.position = "fixed";
+            noteElement.style.bottom = "20px";
+            noteElement.style.left = "50%";
+            noteElement.style.transform = "translateX(-50%)";
+            noteElement.style.backgroundColor = "rgba(255, 255, 255, 0.8)";
+            noteElement.style.padding = "10px";
+            noteElement.style.borderRadius = "5px";
+            noteElement.style.boxShadow = "0px 2px 4px rgba(0, 0, 0, 0.1)";
+            
+            document.body.appendChild(noteElement);
+        }
+
+        function removeNote(id) {
+            var noteElement = document.getElementById(id);
+            if (noteElement) {
+                noteElement.parentNode.removeChild(noteElement);
+            }
+        }
+
+        function handleTap1(ev) {
+            var target = ev.target;
+                pointer = ev.currentPointer;
+            var coords = map.screenToGeo(pointer.viewportX, pointer.viewportY);
+            if (!(target instanceof H.map.Marker)) {
+                var destinationMarker = addMarker(coords, 'B', true);
+                map.addObject(destinationMarker);
+                routingParams.destination = `${coords.lat},${coords.lng}`;
+            }
+            map.removeEventListener('tap', handleTap1);
+            updateRoute();
+            document.getElementById("modifyWaypointsButton").disabled = false;
+            document.getElementById("CalcButton").disabled = false;
+        }
+
+        function handleTap(ev) {
+            const target = ev.target;
+            const pointer = ev.currentPointer;
+            const coords = map.screenToGeo(pointer.viewportX, pointer.viewportY);
+
+            if (!(target instanceof H.map.Marker)) {
+                const marker = addMarker(coords, waypoints.length + 1, true);
+                waypoints.push(marker);
+                updateRoute();
+            }
+        }
+
+        function handleDblTap(ev){
+            const target = ev.target;
+            if (target instanceof H.map.Marker) {
+                if (['origin', 'destination'].indexOf(target.getData().id) !== -1) {
+                    return;
+                }
+                const markerIdx = waypoints.indexOf(target);
+                if (markerIdx !== -1) {
+                    waypoints.splice(markerIdx, 1)
+                    waypoints.forEach((marker, idx) => {
+                        const id = idx + 1;
+                        marker.setData({
+                            id
+                        });
+                        marker.setIcon(getMarkerIcon(id))
+                    });
+                }
+                map.removeObject(target);
+                updateRoute();
+            }
+        }
+
+        /*************************
+         * PLATFORM INITIALIZATION
+        *************************/
+
+        const platform = new H.service.Platform({
+            'apikey': 'uUFZJMYlitfRsDjEJIHqZ1fWoc6jhycasfFwsIBlhWs'
+        });
+        const defaultLayers = platform.createDefaultLayers();
+        const map = new H.Map(
+            document.getElementById("map"),
+            defaultLayers.vector.normal.map, {
+                zoom: 11,
+                center: { // Centered at APSLAB
+                    lat:47.16984, 
+                    lng:-88.50701
+                }
+            });
+
+        window.addEventListener('resize', () => map.getViewPort().resize());
+        const ui = H.ui.UI.createDefault(map, defaultLayers);
+        const zoomRectangle = new H.ui.ZoomRectangle({
+            alignment: H.ui.LayoutAlignment.RIGHT_BOTTOM
+        });
+        ui.addControl('rectangle', zoomRectangle);
+        const mapEvents = new H.mapevents.MapEvents(map);
+        const behavior = new H.mapevents.Behavior(mapEvents);
+        const currentLocMarker = addMarker({lat:0, lng:0}, 'A', false)
+        const origin = {
+            lat: 0,
+            lng: 0
+        };
+        const destination = {
+            lat: 0,
+            lng: 0
+        };
+
+
+        /****************************
+         *  DISTANCE MEASUREMENT TOOL
+        ****************************/
+
+        function createMarkerIcon(color) {
+        return `<svg xmlns="http://www.w3.org/2000/svg" width="24" height="32" viewBox="0 0 24 32">
+            <path d="M12 0C6.48 0 2 4.48 2 10c0 5.057 3.333 14.5 10 22 6.667-7.5 10-16.943 10-22 0-5.52-4.48-10-10-10zm0 14c-1.657 0-3-1.343-3-3s1.343-3 3-3 3 1.343 3 3-1.343 3-3 3z" 
+            fill="${color}" stroke="#FFFFFF"/>
+        </svg>`;
+        }
+
+        const startColor = "#00008B";
+        const stopoverColor = "#8AC9C9";
+        const splitColor = "#A2EDE7";
+        const endColor = "#990000";
+
+        const startIcon = new H.map.Icon(createMarkerIcon(startColor));
+        const stopoverIcon = new H.map.Icon(createMarkerIcon(stopoverColor));
+        const endIcon = new H.map.Icon(createMarkerIcon(endColor));
+        const splitIcon = new H.map.Icon(createMarkerIcon(splitColor));
+
+        const distanceMeasurementTool = new H.ui.DistanceMeasurement({
+        startIcon: startIcon,
+        stopoverIcon: stopoverIcon,
+        endIcon: endIcon,
+        splitIcon: splitIcon,
+        lineStyle: {
+            strokeColor: "rgba(95, 229, 218, 0.5)",
+            lineWidth: 6
+        },
+        alignment: H.ui.LayoutAlignment.RIGHT_BOTTOM
+        });
+
+        ui.addControl("distancemeasurement", distanceMeasurementTool);
+        ui.setUnitSystem(H.ui.UnitSystem.IMPERIAL);
+
+        document.addEventListener("keydown", function(event) {
+            // Check if the pressed key is the "Esc" key (key code 27)
+            if (event.keyCode === 27) {
+                removeNote('tip');
+                map.removeEventListener('tap', handleTap);
+                map.removeEventListener('dbltap', handleDblTap);
+                behavior.enable(H.mapevents.Behavior.Feature.DBL_TAP_ZOOM);
+            }
+        });
+
+        /*********************************************************************
+         * ROS BRIDGE -> roslaunch rosbridge_server rosbridge_websocket.launch
+        *********************************************************************/
+
+        function updateMarkerPosition(marker, newPosition) {
+            var newGeoPoint = new H.geo.Point(newPosition.lat, newPosition.lng);
+            marker.setGeometry(newGeoPoint);
+        }
+
+        const ros = new ROSLIB.Ros({
+            url: 'ws://0.0.0.0:9090' // Replace with the appropriate ROS bridge URL
+        });
+
+        const gpsListener = new ROSLIB.Topic({
+            ros: ros,
+            name: '/gps/gps',
+            messageType: 'gps_common/GPSFix'
+        });
+
+        const routePublisher = new ROSLIB.Topic({
+            ros: ros,
+            name: 'here/route',
+            messageType: 'apsrc_msgs/Response'
+        });
+
+        gpsListener.subscribe(function(message) {
+            const latitude = parseFloat(message.latitude);
+            const longitude = parseFloat(message.longitude);
+            updateMarkerPosition(currentLocMarker, { lat: latitude, lng: longitude });
+            routingParams.origin = `${latitude},${longitude}`;
+        });
+
+        /*********
+         * ROUTING
+        *********/
+        let routePolylines = [];
+        function routeResponseHandler(response) {
+            routePolylines.forEach(polyline => map.removeObject(polyline));
+            routePolylines = [];
+            console.log(response.routes.length);
+            // const colors = ['#1B4F72', '#21618C', '#2E86C1','#2874A6', '#3498DB', '#5DADE2', '#85C1E9', '#AED6F1'];
+            const colors = ['blue', 'red', 'fuchsia', 'maroon', 'Aqua', 'teal', 'green'];
+            for (let i = 0; i < response.routes.length; i++){
+                const sections = response.routes[i].sections;
+                const lineStrings = [];
+                sections.forEach((section) => {
+                    lineStrings.push(H.geo.LineString.fromFlexiblePolyline(section.polyline));
+                });
+                const multiLineString = new H.geo.MultiLineString(lineStrings);
+                const bounds = multiLineString.getBoundingBox();
+                let routePolyline = new H.map.Polyline(multiLineString, {
+                        style: {
+                            lineWidth: 5,
+                            strokeColor: colors[i]
+                        }
+                    });
+                    map.addObject(routePolyline);
+                    routePolylines.push(routePolyline);
+            }
+        }
+
+        function routeResponsePublisher(response) {
+            var message = new ROSLIB.Message({
+                length : response.routes.length,
+                routes : []
+            });
+            for (let i = 0; i < response.routes.length; i++){
+                var departure = new ROSLIB.Message({
+                    time : response.routes[i].sections[0].departure.time,
+                    lat  : response.routes[i].sections[0].departure.place.location.lat,
+                    lng  : response.routes[i].sections[0].departure.place.location.lng,
+                    elv  : response.routes[i].sections[0].departure.place.location.elv
+                });
+
+                var arrival = new ROSLIB.Message({
+                    time : response.routes[i].sections[0].arrival.time,
+                    lat  : response.routes[i].sections[0].arrival.place.location.lat,
+                    lng  : response.routes[i].sections[0].arrival.place.location.lng,
+                    elv  : response.routes[i].sections[0].arrival.place.location.elv 
+                });
+
+                var actions = new ROSLIB.Message({
+                    length: response.routes[i].sections[0].actions.length,
+                    actions: []
+                });
+
+                var spans = new ROSLIB.Message({
+                    length: response.routes[i].sections[0].spans.length,
+                    spans: []
+                });
+                 
+                var route = new ROSLIB.Message({
+                    type      : response.routes[i].sections[0].type,
+                    actions   : actions,
+                    departure : departure,
+                    arrival   : arrival,
+                    duration  : response.routes[i].sections[0].summary.duration,
+                    distance  : response.routes[i].sections[0].summary.length,
+                    baseDuration  : response.routes[i].sections[0].summary.baseDuration,
+                    spans     : spans,
+                    waypoints : []
+                });
+
+                route.waypoints = H.geo.LineString.fromFlexiblePolyline(response.routes[i].sections[0].polyline).T;
+
+                for (let j = 1; j < response.routes[i].sections[0].actions.length; j++){
+                    var action = new ROSLIB.Message({
+                        action      : response.routes[i].sections[0].actions[j].action,
+                        duration    : response.routes[i].sections[0].actions[j].duration,
+                        length      : response.routes[i].sections[0].actions[j].length,
+                        instruction : response.routes[i].sections[0].actions[j].instruction,
+                        offset      : response.routes[i].sections[0].actions[j].offset
+                    });
+                    route.actions.actions.push(action);
+                }
+
+                for (let j = 1; j < response.routes[i].sections[0].spans.length; j++){
+                    var span = new ROSLIB.Message({
+                        offset        : response.routes[i].sections[0].spans[j].offset,
+                        trafficSpeed  : response.routes[i].sections[0].spans[j].dynamicSpeedInfo.trafficSpeed,
+                        baseSpeed     : response.routes[i].sections[0].spans[j].dynamicSpeedInfo.baseSpeed
+                    });
+                    route.spans.spans.push(span);
+                }
+                message.routes.push(route)
+            }
+            routePublisher.publish(message);
+        }
+
+        function updateRoute() {
+            routingParams.via = new H.service.Url.MultiValueQueryParameter(
+                waypoints.map(wp => `${wp.getGeometry().lat},${wp.getGeometry().lng}`));
+            router.calculateRoute(routingParams, routeResponseHandler, console.error);
+        }
+
+        const waypoints = []
+        const routingParams = {
+            'origin': `${origin.lat},${origin.lng}`,
+            'destination': `${destination.lat},${destination.lng}`,
+            'via': new H.service.Url.MultiValueQueryParameter(waypoints),
+            'transportMode': 'car',
+            'alternatives': `6`,
+            'return': 'polyline,elevation,summary,actions,instructions',
+            'spans': 'dynamicSpeedInfo',
+        };
+
+        const router = platform.getRoutingService(null, 8);
+        map.addEventListener('dragstart', function(ev) {
+            const target = ev.target;
+            const pointer = ev.currentPointer;
+            if (target instanceof H.map.Marker) {
+                behavior.disable(H.mapevents.Behavior.Feature.PANNING);
+                var targetPosition = map.geoToScreen(target.getGeometry());
+                target['offset'] = new H.math.Point(
+                    pointer.viewportX - targetPosition.x, pointer.viewportY - targetPosition.y);
+            }
+        }, false);
+
+        map.addEventListener('dragend', function(ev) {
+            const target = ev.target;
+            if (target instanceof H.map.Marker) {
+                behavior.enable(H.mapevents.Behavior.Feature.PANNING);
+                const coords = target.getGeometry();
+                const markerId = target.getData().id;
+                if (markerId === 'A') {
+                    routingParams.origin = `${coords.lat},${coords.lng}`;
+                } else if (markerId === 'B') {
+                    routingParams.destination = `${coords.lat},${coords.lng}`;
+                }
+                updateRoute();
+            }
+        }, false);
+
+        map.addEventListener('drag', function(ev) {
+            const target = ev.target;
+            const pointer = ev.currentPointer;
+            if (target instanceof H.map.Marker) {
+                target.setGeometry(
+                    map.screenToGeo(pointer.viewportX - target['offset'].x, pointer.viewportY - target['offset'].y)
+                );
+            }
+        }, false);
+
+        /*******************************
+         * COSTUME BUTTONS FUNCTIONALITY
+        *******************************/
+
+        document.getElementById("recenterButton").addEventListener("click", function() {
+            map.setCenter(currentLocMarker.getGeometry());
+            map.setZoom(16);
+        });
+
+        document.getElementById("addDestinationButton").addEventListener("click", function() {
+            document.getElementById("addDestinationButton").disabled = true;
+  
+            map.addEventListener('tap', handleTap1);
+        });
+
+        document.getElementById("modifyWaypointsButton").addEventListener("click", function() {
+            document.getElementById("modifyWaypointsButton").disabled = false;
+            behavior.disable(H.mapevents.Behavior.Feature.DBL_TAP_ZOOM);
+            addNote('tip', 'Press ESC to exit Edit mode ~~~ Click to add, and double-click to remove waypoints')
+            map.addEventListener('tap', handleTap);
+            map.addEventListener('dbltap', handleDblTap);
+        });
+
+        document.getElementById("CalcButton").addEventListener("click", function() {
+            routingParams.via = new H.service.Url.MultiValueQueryParameter(
+                        waypoints.map(wp => `${wp.getGeometry().lat},${wp.getGeometry().lng}`));
+            router.calculateRoute(routingParams, routeResponsePublisher, console.error);
+        });
+    </script>
+  </body>
+</html>
