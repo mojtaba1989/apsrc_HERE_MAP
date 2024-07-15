@@ -78,7 +78,36 @@
             opacity: 0.5;
             cursor: not-allowed;
         }
-        
+        #latitude_tbox {
+            position: absolute;
+            bottom: 40px;
+            left: 10px;
+            z-index: 1000;
+            background-color: rgb(255, 255, 255);
+            border: 1px solid #f8020200;
+            padding: 5px;
+            cursor: pointer;  
+        }
+        #longitude_tbox {
+            position: absolute;
+            bottom: 10px;
+            left: 10px;
+            z-index: 1000;
+            background-color: rgb(255, 255, 255);
+            border: 1px solid #f8020200;
+            padding: 5px;
+            cursor: pointer;  
+        }
+        #goButton {
+            position: absolute;
+            bottom: 10px;
+            left: 200px;
+            z-index: 1000;
+            background-color: rgb(0, 204, 255);
+            border: 1px solid #f8020200;
+            padding: 5px;
+            cursor: pointer; 
+        }
     </style>
   </head>
   <body>
@@ -87,6 +116,9 @@
     <button id="addDestinationButton">Add Destination</button>
     <button id="modifyWaypointsButton" disabled>Modify Waypoints</button>
     <button id="CalcButton" disabled>Send to MABx</button>
+    <input id="latitude_tbox" placeholder="Latitude">
+    <input id="longitude_tbox" placeholder="Longitude">
+    <button id="goButton">GO</button>
     <script>
 
         /***********
@@ -194,6 +226,16 @@
             }
         }
 
+        function isNumberInRange(value, min, max) {
+            const num = parseFloat(value);
+            return !isNaN(num) && num >= min && num <= max;
+        }
+
+        function updateMarkerPosition(marker, newPosition) {
+            var newGeoPoint = new H.geo.Point(newPosition.lat, newPosition.lng);
+            marker.setGeometry(newGeoPoint);
+        }
+
         /*************************
          * PLATFORM INITIALIZATION
         *************************/
@@ -277,38 +319,6 @@
             }
         });
 
-        /*********************************************************************
-         * ROS BRIDGE -> roslaunch rosbridge_server rosbridge_websocket.launch
-        *********************************************************************/
-
-        function updateMarkerPosition(marker, newPosition) {
-            var newGeoPoint = new H.geo.Point(newPosition.lat, newPosition.lng);
-            marker.setGeometry(newGeoPoint);
-        }
-
-        const ros = new ROSLIB.Ros({
-            url: 'ws://0.0.0.0:9090' // Replace with the appropriate ROS bridge URL
-        });
-
-        const gpsListener = new ROSLIB.Topic({
-            ros: ros,
-            name: '/gps/gps',
-            messageType: 'gps_common/GPSFix'
-        });
-
-        const routePublisher = new ROSLIB.Topic({
-            ros: ros,
-            name: 'here/route',
-            messageType: 'apsrc_msgs/Response'
-        });
-
-        gpsListener.subscribe(function(message) {
-            const latitude = parseFloat(message.latitude);
-            const longitude = parseFloat(message.longitude);
-            updateMarkerPosition(currentLocMarker, { lat: latitude, lng: longitude });
-            routingParams.origin = `${latitude},${longitude}`;
-        });
-
         /*********
          * ROUTING
         *********/
@@ -338,74 +348,94 @@
                     routePolylines.push(routePolyline);
             }
         }
-
+        
         function routeResponsePublisher(response) {
-            var message = new ROSLIB.Message({
-                length : response.routes.length,
-                routes : []
-            });
-            for (let i = 0; i < response.routes.length; i++){
-                var departure = new ROSLIB.Message({
-                    time : response.routes[i].sections[0].departure.time,
-                    lat  : response.routes[i].sections[0].departure.place.location.lat,
-                    lng  : response.routes[i].sections[0].departure.place.location.lng,
-                    elv  : response.routes[i].sections[0].departure.place.location.elv
-                });
+            var xmlContent = '<?xml version="1.0" encoding="UTF-8"?>\n';
+            xmlContent += '<routes length="' + response.routes.length + '">\n';
+            
+            for (let i = 0; i < response.routes.length; i++) {
+                var route = response.routes[i];
+                var section = route.sections[0];
+                
+                var departure = section.departure.place.location;
+                var arrival = section.arrival.place.location;
 
-                var arrival = new ROSLIB.Message({
-                    time : response.routes[i].sections[0].arrival.time,
-                    lat  : response.routes[i].sections[0].arrival.place.location.lat,
-                    lng  : response.routes[i].sections[0].arrival.place.location.lng,
-                    elv  : response.routes[i].sections[0].arrival.place.location.elv 
-                });
-
-                var actions = new ROSLIB.Message({
-                    length: response.routes[i].sections[0].actions.length,
-                    actions: []
-                });
-
-                var spans = new ROSLIB.Message({
-                    length: response.routes[i].sections[0].spans.length,
-                    spans: []
-                });
-                 
-                var route = new ROSLIB.Message({
-                    type      : response.routes[i].sections[0].type,
-                    actions   : actions,
-                    departure : departure,
-                    arrival   : arrival,
-                    duration  : response.routes[i].sections[0].summary.duration,
-                    distance  : response.routes[i].sections[0].summary.length,
-                    baseDuration  : response.routes[i].sections[0].summary.baseDuration,
-                    spans     : spans,
-                    waypoints : []
-                });
-
-                route.waypoints = H.geo.LineString.fromFlexiblePolyline(response.routes[i].sections[0].polyline).T;
-
-                for (let j = 1; j < response.routes[i].sections[0].actions.length; j++){
-                    var action = new ROSLIB.Message({
-                        action      : response.routes[i].sections[0].actions[j].action,
-                        duration    : response.routes[i].sections[0].actions[j].duration,
-                        length      : response.routes[i].sections[0].actions[j].length,
-                        instruction : response.routes[i].sections[0].actions[j].instruction,
-                        offset      : response.routes[i].sections[0].actions[j].offset
-                    });
-                    route.actions.actions.push(action);
+                xmlContent += '  <route>\n';
+                xmlContent += '    <type>' + section.type + '</type>\n';
+                xmlContent += '    <departure>\n';
+                xmlContent += '      <time>' + section.departure.time + '</time>\n';
+                xmlContent += '      <lat>' + departure.lat + '</lat>\n';
+                xmlContent += '      <lng>' + departure.lng + '</lng>\n';
+                xmlContent += '      <elv>' + departure.elv + '</elv>\n';
+                xmlContent += '    </departure>\n';
+                xmlContent += '    <arrival>\n';
+                xmlContent += '      <time>' + section.arrival.time + '</time>\n';
+                xmlContent += '      <lat>' + arrival.lat + '</lat>\n';
+                xmlContent += '      <lng>' + arrival.lng + '</lng>\n';
+                xmlContent += '      <elv>' + arrival.elv + '</elv>\n';
+                xmlContent += '    </arrival>\n';
+                xmlContent += '    <summary>\n';
+                xmlContent += '      <duration>' + section.summary.duration + '</duration>\n';
+                xmlContent += '      <distance>' + section.summary.length + '</distance>\n';
+                xmlContent += '      <baseDuration>' + section.summary.baseDuration + '</baseDuration>\n';
+                xmlContent += '    </summary>\n';
+                
+                xmlContent += '    <actions length="' + section.actions.length + '">\n';
+                for (let j = 0; j < section.actions.length; j++) {
+                    var action = section.actions[j];
+                    xmlContent += '      <action>\n';
+                    xmlContent += '        <action>' + action.action + '</action>\n';
+                    xmlContent += '        <duration>' + action.duration + '</duration>\n';
+                    xmlContent += '        <length>' + action.length + '</length>\n';
+                    xmlContent += '        <instruction>' + action.instruction + '</instruction>\n';
+                    xmlContent += '        <offset>' + action.offset + '</offset>\n';
+                    xmlContent += '      </action>\n';
                 }
-
-                for (let j = 1; j < response.routes[i].sections[0].spans.length; j++){
-                    var span = new ROSLIB.Message({
-                        offset        : response.routes[i].sections[0].spans[j].offset,
-                        trafficSpeed  : response.routes[i].sections[0].spans[j].dynamicSpeedInfo.trafficSpeed,
-                        baseSpeed     : response.routes[i].sections[0].spans[j].dynamicSpeedInfo.baseSpeed
-                    });
-                    route.spans.spans.push(span);
+                xmlContent += '    </actions>\n';
+                
+                xmlContent += '    <spans length="' + section.spans.length + '">\n';
+                for (let j = 0; j < section.spans.length; j++) {
+                    var span = section.spans[j];
+                    xmlContent += '      <span>\n';
+                    xmlContent += '        <offset>' + span.offset + '</offset>\n';
+                    xmlContent += '        <trafficSpeed>' + span.dynamicSpeedInfo.trafficSpeed + '</trafficSpeed>\n';
+                    xmlContent += '        <baseSpeed>' + span.dynamicSpeedInfo.baseSpeed + '</baseSpeed>\n';
+                    xmlContent += '      </span>\n';
                 }
-                message.routes.push(route)
+                xmlContent += '    </spans>\n';
+                
+                xmlContent += '    <waypoints>\n';
+                var waypoints = H.geo.LineString.fromFlexiblePolyline(section.polyline).T;
+                for (let j = 0; j < waypoints.length; j++) {
+                    xmlContent += '      <waypoint>' + waypoints[j] + '</waypoint>\n';
+                }
+                xmlContent += '    </waypoints>\n';
+                
+                xmlContent += '  </route>\n';
             }
-            routePublisher.publish(message);
+            
+            xmlContent += '</routes>';
+
+            // Create a blob from the XML content
+            var blob = new Blob([xmlContent], { type: 'application/xml' });
+
+            // Create a link element
+            var link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            var now = new Date();
+            var timestamp = now.toISOString().replace(/[:.]/g, '-');
+            link.download = 'routes_'+ response.routes[0].sections[0].departure.time + '.xml';
+
+            // Append the link to the body
+            document.body.appendChild(link);
+
+            // Trigger the download
+            link.click();
+
+            // Remove the link from the body
+            document.body.removeChild(link);
         }
+
 
         function updateRoute() {
             routingParams.via = new H.service.Url.MultiValueQueryParameter(
@@ -488,6 +518,19 @@
             routingParams.via = new H.service.Url.MultiValueQueryParameter(
                         waypoints.map(wp => `${wp.getGeometry().lat},${wp.getGeometry().lng}`));
             router.calculateRoute(routingParams, routeResponsePublisher, console.error);
+        });
+
+        document.getElementById("goButton").addEventListener("click", function() {
+            const textBoxlat = document.getElementById('latitude_tbox').value;
+            const textBoxlng = document.getElementById('longitude_tbox').value;
+            if (isNumberInRange(textBoxlat, -90, 90) && isNumberInRange(textBoxlng, -180, 180)) {
+                updateMarkerPosition(currentLocMarker, { lat: textBoxlat, lng: textBoxlng });
+                routingParams.origin = `${textBoxlat},${textBoxlng}`;
+                map.setCenter(currentLocMarker.getGeometry());
+                map.setZoom(16);
+            } else {
+                alert('Invalid coordinates. Latitude must be between -90 and 90. Longitude must be between -180 and 180.');
+            }
         });
     </script>
   </body>
