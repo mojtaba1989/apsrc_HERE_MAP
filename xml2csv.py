@@ -60,8 +60,24 @@ def process(XML_NAME):
         actions = route.find('actions')
         for action in actions.findall('action'):
             offset = int(action.find('offset').text)
-            df.loc[offset, "action"] = 1
-        
+            instruction = str(action.find('instruction').text).lower()
+            if "ramp" in instruction:
+                df.loc[offset, "action"] = 2
+            elif "turn left" in instruction:
+                df.loc[offset, "action"] = 3
+            elif "turn right" in instruction:
+                df.loc[offset, "action"] = 4
+            elif "exit" in instruction:
+                df.loc[offset, "action"] = 5
+            elif "roundabout" in instruction:
+                df.loc[offset, "action"] = 6
+            elif "u-turn" in instruction:
+                df.loc[offset, "action"] = 7
+            elif "continue" in instruction or "keep" in instruction:
+                df.loc[offset, "action"] = 8
+            else:
+                df.loc[offset, "action"] = 1
+            
         df.loc[:, "speed"] = -1
         df.loc[:, "base_speed"] = -1
         spans = route.find('spans')
@@ -111,14 +127,15 @@ class MainWindow(QMainWindow):
     def openFile(self):
         options = QFileDialog.Options()
         options |= QFileDialog.DontUseNativeDialog
-        fileName, _ = QFileDialog.getOpenFileName(self, "Open XML File", "", "XML Files (*.xml)", options=options)
+        fileName, _ = QFileDialog.getOpenFileNames(self, "Open XML File(s)", "", "XML Files (*.xml)", options=options)
         
-        if fileName:
+        for f in fileName:
             try:
-                self.process_xml_file(fileName)
-                QMessageBox.information(self, 'Information', f'Data has been written to {fileName}.txt')
+                self.process_xml_file(f)
             except Exception as e:
                 QMessageBox.critical(self, 'Error', f'Error while processing XML file: {str(e)}')
+        
+        QMessageBox.information(self, 'Information', f'{len(fileName)} File(s) conversion completed.')
 
     def process_xml_file(self, filename):
         print(filename)

@@ -45,6 +45,29 @@ This project integrates HERE Maps with ROS (Robot Operating System) to facilitat
 - **GPS Listener**: Subscribes to the `/gps/gps` topic to update the current location marker.
 - **Route Publisher**: Publishes the route data to the `here/route` topic.
 
+## HERE Map Stand-Alone Application
+
+The stand-alone version of the HERE map application allows users to input origin latitude and longitude coordinates via a dialog box. The **Export** function enables the downloading of route information in XML format.
+
+To generate tables and summaries from the XML data, use the **xml2csv.py** script. Open the XML file(s) using the designated button or by pressing `Ctrl + O`.
+
+### Python Requirements
+
+- pandas
+- numpy
+- PyQt5
+
+## Action Dictionary
+
+- 0: No Action
+- 1: None of the following
+- 2: Ramp
+- 3: Turn Left
+- 4: Turn Right
+- 5: Exit
+- 6: Roundabout
+- 7: U-Turn
+- 8: Continue/Keep
 
 ## Acknowledgements
 

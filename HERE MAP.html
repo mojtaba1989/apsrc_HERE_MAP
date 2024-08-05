@@ -381,7 +381,7 @@
                     waypoints : []
                 });
 
-                route.waypoints = H.geo.LineString.fromFlexiblePolyline(response.routes[i].sections[0].polyline).T;
+                route.waypoints = H.geo.LineString.fromFlexiblePolyline(response.routes[i].sections[0].polyline).S;
 
                 for (let j = 1; j < response.routes[i].sections[0].actions.length; j++){
                     var action = new ROSLIB.Message({

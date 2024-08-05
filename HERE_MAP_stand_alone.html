@@ -115,7 +115,7 @@
     <button id="recenterButton">Recenter Map</button>
     <button id="addDestinationButton">Add Destination</button>
     <button id="modifyWaypointsButton" disabled>Modify Waypoints</button>
-    <button id="CalcButton" disabled>Send to MABx</button>
+    <button id="CalcButton" disabled>Export</button>
     <input id="latitude_tbox" placeholder="Latitude">
     <input id="longitude_tbox" placeholder="Longitude">
     <button id="goButton">GO</button>
@@ -405,7 +405,7 @@
                 xmlContent += '    </spans>\n';
                 
                 xmlContent += '    <waypoints>\n';
-                var waypoints = H.geo.LineString.fromFlexiblePolyline(section.polyline).T;
+                var waypoints = H.geo.LineString.fromFlexiblePolyline(section.polyline).S;
                 for (let j = 0; j < waypoints.length; j++) {
                     xmlContent += '      <waypoint>' + waypoints[j] + '</waypoint>\n';
                 }
