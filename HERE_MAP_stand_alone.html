@@ -405,7 +405,7 @@
                 xmlContent += '    </spans>\n';
                 
                 xmlContent += '    <waypoints>\n';
-                var waypoints = H.geo.LineString.fromFlexiblePolyline(section.polyline);
+                var waypoints = H.geo.LineString.fromFlexiblePolyline(section.polyline).S;
                 for (let j = 0; j < waypoints.S.length; j++) {
                     xmlContent += '      <waypoint>' + waypoints.S[j] + '</waypoint>\n';
                 }
