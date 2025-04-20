@@ -31,6 +31,44 @@ This project integrates HERE Maps with ROS (Robot Operating System) to facilitat
    roslaunch rosbridge_server rosbridge_websocket.launch
    ```
 
+## How to run Demo
+
+### 🛠 Requirements
+
+- Node.js (with npm)
+- ROS (with `rosbridge_server`)
+
+---
+
+### 📦 Installation
+1. Install Node.js and npm
+
+```bash
+sudo apt update
+sudo apt install nodejs npm
+```
+
+2. Initialize the project (if not already done)
+```bash 
+npm init -y
+```
+3. Install required dependencies
+```bash
+npm install express ws
+```
+
+4. Replace the host ip address in ***public/index.html*** with the actual IP address of your machine. This step is crucial for the Node.js server to connect to the ROS bridge from other devices.
+
+5. Run all
+```bash
+chmod +x run.bash
+./run.bash
+```
+
+6. Setup a wifi hotspot and connect to it using the provided credentials.
+
+7. Connect to the hotspot and open the web interface at http://<host_ip>:8000
+
 ## Usage
 
 ### Map Interactions
