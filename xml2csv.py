@@ -6,9 +6,19 @@ import sys
 from PyQt5.QtWidgets import QApplication, QMainWindow, QTextEdit, QAction, QFileDialog, QMessageBox
 
 
-
+def check_for_symbols(XML_NAME, symbols=["&"]):
+    # rewrite a file without &
+    with open(XML_NAME, 'r') as file:
+        lines = file.readlines()
+    with open(XML_NAME, 'w') as file:
+        for line in lines:
+            for symbol in symbols:
+                if symbol in line:
+                    line = line.replace(symbol, "")
+            file.write(line)
 
 def process(XML_NAME):
+    check_for_symbols(XML_NAME, ["&"])
     tree = ET.parse(XML_NAME)
     root = tree.getroot()
         
@@ -92,7 +102,8 @@ def process(XML_NAME):
                 try:
                     df.loc[h, "speed"]=df.loc[h-1, "speed"]
                     df.loc[h, "base_speed"]=df.loc[h-1, "base_speed"]
-                except:
+                except Exception as e:
+                    print(e)
                     pass
         FILE_NAME = os.path.basename(XML_NAME) + '_route_' + str(i) + '.csv'
         df.to_csv(FILE_NAME)
